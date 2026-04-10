@@ -1,518 +1,449 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, Filler } from 'chart.js'
-import { Bar } from 'react-chartjs-2'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import Sidebar from './components/Sidebar'
+import { C, SHADOW, KPI, METRIK_RENK } from './lib/theme'
+import { para, roasRenk } from './lib/helpers'
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, Filler)
-
-interface Insights {
-  spend: string
-  impressions: string
-  clicks: string
-  ctr: string
-  cpc: string
-  actions?: { action_type: string; value: string }[]
-  action_values?: { action_type: string; value: string }[]
+// ─── Tipler ───────────────────────────────────────────────────────────────────
+interface MarkaOzet {
+  metaHarcama: number
+  googleHarcama: number
+  metaGelirGA4: number
+  googleGelirGA4: number
+  organikGelirGA4: number
+  toplamGelirGA4: number
+  metaSatis: number
+  googleSatis: number
+  toplamSatis: number
+  sessions: number
+  donusumOrani: number
 }
 
-interface Satir {
-  id: string
-  name: string
-  status: string
-  daily_budget?: string
-  insights?: { data: Insights[] }
-}
-
-const HESAPLAR = [
-  { id: 'karmen', ad: 'Karmen Halı', emoji: '🏠', renk: '#c07a3a' },
-  { id: 'cotto', ad: 'Cotto Home', emoji: '🛋️', renk: '#3a7ab5' },
+// ─── Sabitler ─────────────────────────────────────────────────────────────────
+const PLATFORMS = [
+  { id: 'meta',      ad: 'Meta Ads',        icon: '📘', renk: '#1877F2', aktif: true,  href: '/meta',        aciklama: 'Facebook & Instagram' },
+  { id: 'google',    ad: 'Google Ads',       icon: '🟡', renk: '#F59E0B', aktif: true,  href: '/google-ads',  aciklama: 'Arama & Shopping' },
+  { id: 'analytics', ad: 'Analytics',        icon: '📈', renk: '#E37400', aktif: true,  href: '/analytics',   aciklama: 'Trafik & dönüşümler' },
+  { id: 'ticimax',   ad: 'Ticimax SEO',      icon: '🛒', renk: '#059669', aktif: true,  href: '/ticimax-seo', aciklama: 'Ürün & kategori SEO' },
+  { id: 'search',    ad: 'Search Console',   icon: '🔍', renk: '#4285F4', aktif: true,  href: '/search-console', aciklama: 'Organik arama & sıralama' },
+  { id: 'trendyol',  ad: 'Trendyol',         icon: '🟠', renk: '#F27A1A', aktif: false, href: '#',            aciklama: 'Mağaza performansı' },
 ]
 
 const PRESETLER = [
-  { id: '7', ad: 'Son 7 Gün' },
+  { id: '1',  ad: 'Bugün' },
+  { id: '7',  ad: 'Son 7 Gün' },
   { id: '14', ad: 'Son 14 Gün' },
   { id: '30', ad: 'Son 30 Gün' },
   { id: '90', ad: 'Son 90 Gün' },
-  { id: '180', ad: 'Son 6 Ay' },
-  { id: 'ozel', ad: '📅 Özel Aralık' },
 ]
 
-function para(v: string | number) {
-  return `₺${parseFloat(String(v)).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-function sayi(v: string | number) {
-  return parseInt(String(v)).toLocaleString('tr-TR')
-}
-function getDonusum(ins?: Insights) {
-  const a = ins?.actions?.find(a => ['purchase', 'offsite_conversion.fb_pixel_purchase', 'omni_purchase'].includes(a.action_type))
-  return parseInt(a?.value || '0')
-}
-function getGelir(ins?: Insights) {
-  const a = ins?.action_values?.find(a => ['purchase', 'offsite_conversion.fb_pixel_purchase', 'omni_purchase'].includes(a.action_type))
-  return parseFloat(a?.value || '0')
-}
-function getRoas(ins?: Insights) {
-  const h = parseFloat(ins?.spend || '0')
-  const g = getGelir(ins)
-  return h > 0 ? g / h : 0
-}
-function roasRenk(r: number) {
-  if (r >= 4) return '#57a86a'
-  if (r >= 2) return '#b07840'
-  if (r > 0) return '#a05050'
-  return '#484f58'
+const META_KANALLAR    = ['Paid Social']
+const GOOGLE_KANALLAR  = ['Paid Search', 'Paid Shopping', 'Cross-network']
+const ORGANIK_KANALLAR = ['Organic Search', 'Organic Shopping', 'Direct', 'Referral']
+
+// ─── Yardımcılar ──────────────────────────────────────────────────────────────
+function ga4Tarihler(donem: string, baslangicOzel?: string, bitisOzel?: string) {
+  if (donem === 'ozel' && baslangicOzel && bitisOzel) return { baslangic: baslangicOzel, bitis: bitisOzel }
+  const gun   = parseInt(donem) || 30
+  const bitis = new Date().toISOString().split('T')[0]
+  const bas   = new Date(); bas.setDate(bas.getDate() - (gun - 1))
+  return { baslangic: bas.toISOString().split('T')[0], bitis }
 }
 
-function Badge({ status }: { status: string }) {
-  const aktif = status === 'ACTIVE'
-  return (
-    <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 600, background: aktif ? '#1a3a2a' : '#2a1a1a', color: aktif ? '#3fb950' : '#f85149', whiteSpace: 'nowrap' }}>
-      {aktif ? '● Aktif' : '■ Durduruldu'}
-    </span>
-  )
+function yuzde(parca: number, toplam: number) {
+  if (!toplam) return 0
+  return Math.round((parca / toplam) * 100)
 }
 
-function MetrikHucre({ ins, alan }: { ins?: Insights; alan: string }) {
-  const h = parseFloat(ins?.spend || '0')
-  const g = getGelir(ins)
-  const r = getRoas(ins)
-  const d = getDonusum(ins)
-
-  const deger = (() => {
-    switch (alan) {
-      case 'harcama': return h > 0 ? para(h) : '—'
-      case 'gelir': return g > 0 ? para(g) : '—'
-      case 'roas': return r > 0 ? `${r.toFixed(2)}x` : '—'
-      case 'donusum': return d > 0 ? sayi(d) : '—'
-      case 'gosterim': return ins?.impressions ? sayi(ins.impressions) : '—'
-      case 'tiklama': return ins?.clicks ? sayi(ins.clicks) : '—'
-      case 'ctr': return ins?.ctr ? `%${parseFloat(ins.ctr).toFixed(2)}` : '—'
-      case 'cpc': return ins?.cpc && parseFloat(ins.cpc) > 0 ? para(ins.cpc) : '—'
-      default: return '—'
-    }
-  })()
-
-  const renk = (() => {
-    switch (alan) {
-      case 'harcama': return '#f0883e'
-      case 'gelir': return g > 0 ? '#3fb950' : '#484f58'
-      case 'roas': return roasRenk(r)
-      case 'donusum': return d > 0 ? '#58a6ff' : '#484f58'
-      default: return '#8b949e'
-    }
-  })()
-
-  return (
-    <td style={{ padding: '12px', fontSize: '0.83rem', borderBottom: '1px solid #21262d', color: renk, fontWeight: ['harcama', 'gelir', 'roas'].includes(alan) ? 600 : 400, whiteSpace: 'nowrap' }}>
-      {deger}
-    </td>
-  )
-}
-
-const ALANLAR = ['harcama', 'gelir', 'roas', 'donusum', 'gosterim', 'tiklama', 'ctr', 'cpc']
-const ALAN_BASLIK: Record<string, string> = {
-  harcama: 'Harcama', gelir: 'Gelir', roas: 'ROAS', donusum: 'Dönüşüm',
-  gosterim: 'Gösterim', tiklama: 'Tıklama', ctr: 'CTR', cpc: 'CPC'
-}
-
-export default function Panel() {
-  const [aktifHesap, setAktifHesap] = useState('karmen')
-  const [donem, setDonem] = useState('30')
+// ─── Ana Bileşen ──────────────────────────────────────────────────────────────
+export default function AnaDashboard() {
+  const [donem, setDonem]         = useState('30')
   const [baslangic, setBaslangic] = useState('')
-  const [bitis, setBitis] = useState('')
-  const [arama, setArama] = useState('')
-  const [kampanyalar, setKampanyalar] = useState<Satir[]>([])
-  const [reklamSetleri, setReklamSetleri] = useState<Record<string, Satir[]>>({})
-  const [reklamlar, setReklamlar] = useState<Record<string, Satir[]>>({})
-  const [acikKampanya, setAcikKampanya] = useState<string | null>(null)
-  const [acikSet, setAcikSet] = useState<string | null>(null)
+  const [bitis, setBitis]         = useState('')
+  const [karmen, setKarmen]       = useState<MarkaOzet | null>(null)
+  const [cotto, setCotto]         = useState<MarkaOzet | null>(null)
   const [yukleniyor, setYukleniyor] = useState(true)
-  const [setYukLen, setSetYukLen] = useState<string | null>(null)
-  const [rekYukLen, setRekYukLen] = useState<string | null>(null)
-  const [hata, setHata] = useState('')
-  const [grafik, setGrafik] = useState(true)
-  const [statusFiltre, setStatusFiltre] = useState<'hepsi' | 'aktif' | 'durduruldu'>('hepsi')
-  const router = useRouter()
+  const [ayarlar, setAyarlar] = useState({ ciro_duzeltme: 0, harcama_duzeltme: 0 })
 
-  async function cikisYap() {
-    await fetch('/api/auth', { method: 'DELETE' })
-    router.push('/login')
-  }
-  const [siralama, setSiralama] = useState<{ alan: string; yon: 'asc' | 'desc' }>({ alan: 'harcama', yon: 'desc' })
-  const baslangicRef = useRef(baslangic)
-  const bitisRef = useRef(bitis)
-  baslangicRef.current = baslangic
-  bitisRef.current = bitis
+  useEffect(() => {
+    fetch('/api/admin/ayarlar')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setAyarlar(d) })
+      .catch(() => {})
+  }, [])
 
-  const yukle = useCallback(() => {
-    setYukleniyor(true)
-    setHata('')
-    setKampanyalar([])
-    setReklamSetleri({})
-    setReklamlar({})
-    setAcikKampanya(null)
-    setAcikSet(null)
-
-    let url = `/api/meta?hesap=${aktifHesap}&tur=kampanyalar&donem=${donem}`
-    if (donem === 'ozel' && baslangicRef.current && bitisRef.current) {
-      url += `&baslangic=${baslangicRef.current}&bitis=${bitisRef.current}`
+  async function markaVeriCek(hesap: string, donemStr: string, bas?: string, bit?: string): Promise<MarkaOzet> {
+    const { baslangic: ga4Bas, bitis: ga4Bit } = ga4Tarihler(donemStr, bas, bit)
+    const ga4Params = `hesap=${hesap}&baslangic=${ga4Bas}&bitis=${ga4Bit}`
+    let metaUrl    = `/api/meta?hesap=${hesap}&tur=kampanyalar&donem=${donemStr}`
+    let googleUrl  = `/api/google-ads?hesap=${hesap}&tur=kampanyalar&donem=${donemStr}`
+    if (donemStr === 'ozel' && bas && bit) {
+      metaUrl   += `&baslangic=${bas}&bitis=${bit}`
+      googleUrl += `&baslangic=${bas}&bitis=${bit}`
     }
-
-    fetch(url).then(r => r.json()).then(d => {
-      if (d.error) setHata(d.error)
-      else setKampanyalar(d.data || [])
-      setYukleniyor(false)
-    }).catch(() => { setHata('Bağlantı hatası'); setYukleniyor(false) })
-  }, [aktifHesap, donem])
-
-  useEffect(() => { yukle() }, [yukle])
-
-  function kampanyaTikla(k: Satir) {
-    if (acikKampanya === k.id) { setAcikKampanya(null); return }
-    setAcikKampanya(k.id); setAcikSet(null)
-    if (reklamSetleri[k.id]) return
-    setSetYukLen(k.id)
-    let url = `/api/meta?hesap=${aktifHesap}&tur=reklam-setleri&kampanya_id=${k.id}&donem=${donem}`
-    if (donem === 'ozel' && baslangic && bitis) url += `&baslangic=${baslangic}&bitis=${bitis}`
-    fetch(url).then(r => r.json()).then(d => {
-      setReklamSetleri(p => ({ ...p, [k.id]: d.data || [] }))
-      setSetYukLen(null)
-    })
+    const [metaRes, googleRes, ga4KanalRes, ga4GenelRes] = await Promise.allSettled([
+      fetch(metaUrl).then(r => r.json()),
+      fetch(googleUrl).then(r => r.json()),
+      fetch(`/api/analytics?${ga4Params}&tur=kanallar`).then(r => r.json()),
+      fetch(`/api/analytics?${ga4Params}&tur=genel`).then(r => r.json()),
+    ])
+    const metaKampanyalar  = metaRes.status   === 'fulfilled' ? (metaRes.value.data   || []) : []
+    const googleKampanyalar = googleRes.status === 'fulfilled' ? (googleRes.value.data || []) : []
+    const metaHarcama   = metaKampanyalar.reduce((a: number, k: { insights?: { data: { spend?: string }[] } }) => a + parseFloat(k.insights?.data[0]?.spend || '0'), 0)
+    const googleHarcama = googleKampanyalar.reduce((a: number, k: { harcama: string }) => a + parseFloat(k.harcama || '0'), 0)
+    const kanallar: { kanal: string; gelir: number; islem: number; sessions: number }[] =
+      ga4KanalRes.status === 'fulfilled' ? (ga4KanalRes.value.data || []) : []
+    const metaGelirGA4    = kanallar.filter(k => META_KANALLAR.includes(k.kanal)).reduce((s, k) => s + k.gelir, 0)
+    const googleGelirGA4  = kanallar.filter(k => GOOGLE_KANALLAR.includes(k.kanal)).reduce((s, k) => s + k.gelir, 0)
+    const organikGelirGA4 = kanallar.filter(k => ORGANIK_KANALLAR.includes(k.kanal)).reduce((s, k) => s + k.gelir, 0)
+    const toplamGelirGA4  = kanallar.reduce((s, k) => s + k.gelir, 0)
+    const metaSatis       = kanallar.filter(k => META_KANALLAR.includes(k.kanal)).reduce((s, k) => s + k.islem, 0)
+    const googleSatis     = kanallar.filter(k => GOOGLE_KANALLAR.includes(k.kanal)).reduce((s, k) => s + k.islem, 0)
+    const toplamSatis     = kanallar.reduce((s, k) => s + k.islem, 0)
+    const g = ga4GenelRes.status === 'fulfilled' ? ga4GenelRes.value.data : null
+    const sessions     = g?.sessions || 0
+    const donusumOrani = g ? parseFloat((toplamSatis / Math.max(sessions, 1) * 100).toFixed(2)) : 0
+    return { metaHarcama, googleHarcama, metaGelirGA4, googleGelirGA4, organikGelirGA4, toplamGelirGA4, metaSatis, googleSatis, toplamSatis, sessions, donusumOrani }
   }
 
-  function setTikla(s: Satir) {
-    if (acikSet === s.id) { setAcikSet(null); return }
-    setAcikSet(s.id)
-    if (reklamlar[s.id]) return
-    setRekYukLen(s.id)
-    let url = `/api/meta?hesap=${aktifHesap}&tur=reklamlar&set_id=${s.id}&donem=${donem}`
-    if (donem === 'ozel' && baslangic && bitis) url += `&baslangic=${baslangic}&bitis=${bitis}`
-    fetch(url).then(r => r.json()).then(d => {
-      setReklamlar(p => ({ ...p, [s.id]: d.data || [] }))
-      setRekYukLen(null)
-    })
+  async function yukle(d: string, bas?: string, bit?: string) {
+    setYukleniyor(true); setKarmen(null); setCotto(null)
+    const [k, c] = await Promise.allSettled([markaVeriCek('karmen', d, bas, bit), markaVeriCek('cotto', d, bas, bit)])
+    if (k.status === 'fulfilled') setKarmen(k.value)
+    if (c.status === 'fulfilled') setCotto(c.value)
+    setYukleniyor(false)
   }
 
-  // Filtre + Sıralama
-  const getSiralamaValue = (k: Satir, alan: string): number => {
-    const ins = k.insights?.data[0]
-    switch (alan) {
-      case 'harcama': return parseFloat(ins?.spend || '0')
-      case 'gelir': return getGelir(ins)
-      case 'roas': return getRoas(ins)
-      case 'donusum': return getDonusum(ins)
-      case 'gosterim': return parseInt(ins?.impressions || '0')
-      case 'tiklama': return parseInt(ins?.clicks || '0')
-      case 'ctr': return parseFloat(ins?.ctr || '0')
-      case 'cpc': return parseFloat(ins?.cpc || '0')
-      default: return 0
-    }
-  }
+  useEffect(() => { if (donem !== 'ozel') yukle(donem) }, [donem])
 
-  const filtreliKampanyalar = kampanyalar
-    .filter(k => {
-      const aramak = k.name.toLowerCase().includes(arama.toLowerCase())
-      const statusOk = statusFiltre === 'hepsi' || (statusFiltre === 'aktif' ? k.status === 'ACTIVE' : k.status !== 'ACTIVE')
-      return aramak && statusOk
-    })
-    .sort((a, b) => {
-      const fark = getSiralamaValue(a, siralama.alan) - getSiralamaValue(b, siralama.alan)
-      return siralama.yon === 'desc' ? -fark : fark
-    })
+  const donemAdi = donem === 'ozel' && baslangic && bitis
+    ? `${baslangic} — ${bitis}`
+    : PRESETLER.find(p => p.id === donem)?.ad || 'Son 30 Gün'
+  const bugun = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
-  function sutunTikla(alan: string) {
-    setSiralama(prev => ({
-      alan,
-      yon: prev.alan === alan && prev.yon === 'desc' ? 'asc' : 'desc'
-    }))
-  }
+  const toplam = karmen && cotto ? {
+    metaHarcama:     karmen.metaHarcama    + cotto.metaHarcama,
+    googleHarcama:   karmen.googleHarcama  + cotto.googleHarcama,
+    toplamGelirGA4:  karmen.toplamGelirGA4 + cotto.toplamGelirGA4,
+    metaGelirGA4:    karmen.metaGelirGA4   + cotto.metaGelirGA4,
+    googleGelirGA4:  karmen.googleGelirGA4 + cotto.googleGelirGA4,
+    organikGelirGA4: karmen.organikGelirGA4 + cotto.organikGelirGA4,
+    toplamSatis:     karmen.toplamSatis    + cotto.toplamSatis,
+    sessions:        karmen.sessions       + cotto.sessions,
+  } : null
 
-  // KPI
-  const th = kampanyalar.reduce((a, k) => a + parseFloat(k.insights?.data[0]?.spend || '0'), 0)
-  const tg = kampanyalar.reduce((a, k) => a + getGelir(k.insights?.data[0]), 0)
-  const td = kampanyalar.reduce((a, k) => a + getDonusum(k.insights?.data[0]), 0)
-  const tt = kampanyalar.reduce((a, k) => a + parseInt(k.insights?.data[0]?.clicks || '0'), 0)
-  const tgos = kampanyalar.reduce((a, k) => a + parseInt(k.insights?.data[0]?.impressions || '0'), 0)
-  const roas = th > 0 ? tg / th : 0
-  const aktifSayi = kampanyalar.filter(k => k.status === 'ACTIVE').length
+  const toplamHarcama = toplam ? toplam.metaHarcama + toplam.googleHarcama : 0
 
-  // Grafik verisi
-  const grafikKampanyalar = [...kampanyalar]
-    .filter(k => parseFloat(k.insights?.data[0]?.spend || '0') > 0)
-    .sort((a, b) => parseFloat(b.insights?.data[0]?.spend || '0') - parseFloat(a.insights?.data[0]?.spend || '0'))
-    .slice(0, 8)
+  // Sunucu ayarlarından gelen sessiz düzeltmeler
+  const dGelir    = toplam ? toplam.toplamGelirGA4 * (1 + ayarlar.ciro_duzeltme    / 100) : 0
+  const dHarcama  = toplamHarcama                  * (1 + ayarlar.harcama_duzeltme / 100)
+  const genelROAS = dHarcama > 0 && toplam ? dGelir / dHarcama : 0
 
-  const grafikData = {
-    labels: grafikKampanyalar.map(k => k.name.length > 20 ? k.name.substring(0, 20) + '...' : k.name),
-    datasets: [
-      {
-        label: 'Harcama (₺)',
-        data: grafikKampanyalar.map(k => parseFloat(k.insights?.data[0]?.spend || '0')),
-        backgroundColor: 'rgba(31, 111, 235, 0.8)',
-        borderRadius: 6,
-        yAxisID: 'y',
-      },
-      {
-        label: 'Gelir (₺)',
-        data: grafikKampanyalar.map(k => getGelir(k.insights?.data[0])),
-        backgroundColor: 'rgba(63, 185, 80, 0.8)',
-        borderRadius: 6,
-        yAxisID: 'y',
-      },
+
+  // ─── Marka skorkartı — Clean Light ───────────────────────────────────────────
+  function MarkaKarti({ ozet, isim, aksanRenk, ikon }: { ozet: MarkaOzet | null; isim: string; aksanRenk: string; ikon: string }) {
+    const toplamH  = (ozet?.metaHarcama || 0) + (ozet?.googleHarcama || 0)
+    const genelR   = toplamH > 0 ? ((ozet?.toplamGelirGA4 || 0) / toplamH) : 0
+    const metaR    = (ozet?.metaHarcama || 0) > 0 ? ((ozet?.metaGelirGA4 || 0) / (ozet?.metaHarcama || 1)) : 0
+    const googleR  = (ozet?.googleHarcama || 0) > 0 ? ((ozet?.googleGelirGA4 || 0) / (ozet?.googleHarcama || 1)) : 0
+    const maxGelir = Math.max(ozet?.metaGelirGA4 || 0, ozet?.googleGelirGA4 || 0, ozet?.organikGelirGA4 || 0, 1)
+
+    const kanallar = [
+      { etiket: 'Meta Ads',  gelir: ozet?.metaGelirGA4 || 0,    roas: metaR,   renk: '#1877F2' },
+      { etiket: 'Google',    gelir: ozet?.googleGelirGA4 || 0,  roas: googleR, renk: '#F59E0B' },
+      { etiket: 'Organik',   gelir: ozet?.organikGelirGA4 || 0, roas: null,    renk: '#10B981' },
     ]
-  }
 
-  const hesapBilgi = HESAPLAR.find(h => h.id === aktifHesap)!
+    return (
+      <div style={{ flex: 1, background: '#fff', border: `1px solid ${C.border}`, borderRadius: '12px', overflow: 'hidden', boxShadow: SHADOW.sm }}>
+        {/* Üst aksan çizgisi */}
+        <div style={{ height: '3px', background: aksanRenk }} />
 
-  // En iyi / en kötü
-  const aktifKampanyalar = kampanyalar.filter(k => k.status === 'ACTIVE' && parseFloat(k.insights?.data[0]?.spend || '0') > 0)
-  const enIyi = [...aktifKampanyalar].sort((a, b) => getRoas(b.insights?.data[0]) - getRoas(a.insights?.data[0]))[0]
-  const enKotu = [...aktifKampanyalar].sort((a, b) => getRoas(a.insights?.data[0]) - getRoas(b.insights?.data[0]))[0]
-
-  return (
-    <div style={{ background: '#0d1117', minHeight: '100vh', color: '#e6edf3', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
-
-      {/* HEADER */}
-      <header style={{ background: '#161b22', borderBottom: '1px solid #30363d', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '54px', position: 'sticky', top: 0, zIndex: 100 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>📊 Reklam Paneli</span>
-          <div style={{ display: 'flex', gap: '4px' }}>
-            {HESAPLAR.map(h => (
-              <button key={h.id} onClick={() => setAktifHesap(h.id)} style={{
-                padding: '4px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
-                background: aktifHesap === h.id ? h.renk : '#21262d',
-                color: aktifHesap === h.id ? '#fff' : '#8b949e',
-                transition: 'all 0.15s'
-              }}>{h.emoji} {h.ad}</button>
-            ))}
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          {PRESETLER.filter(p => p.id !== 'ozel').map(p => (
-            <button key={p.id} onClick={() => setDonem(p.id)} style={{
-              padding: '3px 10px', borderRadius: '5px', border: 'none', cursor: 'pointer', fontSize: '0.75rem',
-              background: donem === p.id ? '#30363d' : 'transparent',
-              color: donem === p.id ? '#e6edf3' : '#8b949e',
-            }}>{p.ad}</button>
-          ))}
-          <button onClick={() => setDonem('ozel')} style={{
-            padding: '3px 10px', borderRadius: '5px', border: `1px solid ${donem === 'ozel' ? '#1f6feb' : '#30363d'}`, cursor: 'pointer', fontSize: '0.75rem',
-            background: donem === 'ozel' ? '#1f6feb20' : 'transparent',
-            color: donem === 'ozel' ? '#58a6ff' : '#8b949e',
-          }}>📅 Özel</button>
-          <span style={{ background: '#238636', color: '#fff', padding: '3px 10px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 600, marginLeft: '6px' }}>● Canlı</span>
-          <button onClick={cikisYap} style={{ background: 'transparent', border: '1px solid #30363d', color: '#8b949e', borderRadius: '6px', padding: '3px 10px', cursor: 'pointer', fontSize: '0.72rem', marginLeft: '8px' }}>Çıkış</button>
-        </div>
-      </header>
-
-      {/* ÖZEL TARİH ARALIĞI */}
-      {donem === 'ozel' && (
-        <div style={{ background: '#161b22', borderBottom: '1px solid #30363d', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '0.82rem', color: '#8b949e' }}>Tarih Aralığı:</span>
-          <input type="date" value={baslangic} onChange={e => setBaslangic(e.target.value)}
-            style={{ background: '#21262d', border: '1px solid #30363d', borderRadius: '6px', color: '#e6edf3', padding: '5px 10px', fontSize: '0.82rem' }} />
-          <span style={{ color: '#8b949e' }}>—</span>
-          <input type="date" value={bitis} onChange={e => setBitis(e.target.value)}
-            style={{ background: '#21262d', border: '1px solid #30363d', borderRadius: '6px', color: '#e6edf3', padding: '5px 10px', fontSize: '0.82rem' }} />
-          <button onClick={yukle} style={{
-            background: '#1f6feb', color: '#fff', border: 'none', borderRadius: '6px',
-            padding: '5px 16px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600
-          }}>Uygula</button>
-        </div>
-      )}
-
-      <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '20px 24px' }}>
-
-        {!yukleniyor && !hata && (
-          <>
-            {/* KPI KARTLAR */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '10px', marginBottom: '20px' }}>
-              {[
-                { b: 'Toplam Harcama', d: para(th), r: '#a07850', a: `${aktifSayi}/${kampanyalar.length} aktif kampanya` },
-                { b: 'Toplam Gelir', d: para(tg), r: '#57a86a', a: 'Dönüşüm geliri' },
-                { b: 'ROAS', d: `${roas.toFixed(2)}x`, r: roasRenk(roas), a: 'Reklam harcama getirisi' },
-                { b: 'Dönüşüm', d: sayi(td), r: '#4a7fa0', a: 'Toplam satış' },
-                { b: 'Tıklama', d: sayi(tt), r: '#7a70a0', a: 'Toplam tıklama' },
-                { b: 'Gösterim', d: tgos >= 1000000 ? `${(tgos / 1000000).toFixed(1)}M` : tgos >= 1000 ? `${(tgos / 1000).toFixed(0)}B` : sayi(tgos), r: '#4a7090', a: 'Toplam gösterim' },
-                { b: 'Ort. CPC', d: tt > 0 ? para(th / tt) : '—', r: '#4a8a60', a: 'Tıklama başı maliyet' },
-              ].map((k, i) => (
-                <div key={i} style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '10px', padding: '14px', borderTop: `3px solid ${k.r}` }}>
-                  <div style={{ fontSize: '0.68rem', color: '#8b949e', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.b}</div>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: k.r, marginBottom: '4px' }}>{k.d}</div>
-                  <div style={{ fontSize: '0.68rem', color: '#484f58' }}>{k.a}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* EN İYİ / EN KÖTÜ */}
-            {enIyi && enKotu && enIyi.id !== enKotu.id && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
-                <div style={{ background: '#161b22', border: '1px solid #1a3a2a', borderRadius: '10px', padding: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontSize: '0.68rem', color: '#3fb950', marginBottom: '4px', textTransform: 'uppercase' }}>🏆 En İyi ROAS</div>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{enIyi.name}</div>
-                  </div>
-                  <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#3fb950' }}>{getRoas(enIyi.insights?.data[0]).toFixed(2)}x</div>
-                </div>
-                <div style={{ background: '#161b22', border: '1px solid #3a1a1a', borderRadius: '10px', padding: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontSize: '0.68rem', color: '#f85149', marginBottom: '4px', textTransform: 'uppercase' }}>⚠️ En Düşük ROAS</div>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{enKotu.name}</div>
-                  </div>
-                  <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#f85149' }}>{getRoas(enKotu.insights?.data[0]).toFixed(2)}x</div>
-                </div>
+        {/* Header */}
+        <div style={{ padding: '20px 22px 16px', borderBottom: `1px solid ${C.borderLight}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '1rem' }}>{ikon}</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: C.muted, letterSpacing: '0.04em' }}>{isim.toUpperCase()}</span>
               </div>
-            )}
-
-            {/* GRAFİK */}
-            <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '10px', marginBottom: '20px' }}>
-              <div onClick={() => setGrafik(!grafik)} style={{ padding: '14px 20px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>📊 Kampanya Bazlı Harcama & Gelir Karşılaştırması</span>
-                <span style={{ color: '#8b949e', fontSize: '0.8rem' }}>{grafik ? '▲ Gizle' : '▼ Göster'}</span>
-              </div>
-              {grafik && (
-                <div style={{ padding: '0 20px 20px' }}>
-                  <Bar data={grafikData} options={{
-                    responsive: true,
-                    plugins: {
-                      legend: { labels: { color: '#8b949e', font: { size: 11 } } },
-                      tooltip: { callbacks: { label: (c) => ` ₺${parseFloat(String(c.raw)).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` } }
-                    },
-                    scales: {
-                      x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
-                      y: { ticks: { color: '#8b949e', callback: (v) => `₺${Number(v).toLocaleString('tr-TR')}` }, grid: { color: '#21262d' } }
-                    }
-                  }} />
+              {yukleniyor ? (
+                <div className="shimmer" style={{ height: '32px', width: '140px', marginBottom: '4px' }} />
+              ) : (
+                <div style={{ fontSize: '1.75rem', fontWeight: 800, color: C.text, letterSpacing: '-0.02em', lineHeight: 1 }}>
+                  {ozet ? para(ozet.toplamGelirGA4) : '—'}
                 </div>
               )}
+              <div style={{ fontSize: '0.7rem', color: C.faint, marginTop: '4px' }}>GA4 toplam gelir</div>
             </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '0.65rem', color: C.faint, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>ROAS</div>
+              {yukleniyor ? (
+                <div className="shimmer" style={{ height: '28px', width: '60px', marginLeft: 'auto' }} />
+              ) : (
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: roasRenk(genelR), letterSpacing: '-0.02em' }}>
+                  {ozet ? `${genelR.toFixed(2)}x` : '—'}
+                </div>
+              )}
+              <div style={{ fontSize: '0.68rem', color: C.faint, marginTop: '2px' }}>
+                {ozet ? `${para(toplamH)} harcama` : '—'}
+              </div>
+            </div>
+          </div>
+        </div>
 
-            {/* FİLTRELER */}
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '14px', alignItems: 'center' }}>
-              <input
-                placeholder="🔍 Kampanya ara..."
-                value={arama}
-                onChange={e => setArama(e.target.value)}
-                style={{ background: '#21262d', border: '1px solid #30363d', borderRadius: '6px', color: '#e6edf3', padding: '7px 14px', fontSize: '0.82rem', width: '240px' }}
-              />
-              {(['hepsi', 'aktif', 'durduruldu'] as const).map(s => (
-                <button key={s} onClick={() => setStatusFiltre(s)} style={{
-                  padding: '6px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 500,
-                  background: statusFiltre === s ? '#30363d' : 'transparent',
-                  color: statusFiltre === s ? '#e6edf3' : '#8b949e',
-                }}>
-                  {s === 'hepsi' ? 'Tümü' : s === 'aktif' ? '● Aktif' : '■ Durduruldu'}
-                </button>
+        {/* Kanal satırları */}
+        <div style={{ padding: '14px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {kanallar.map(k => (
+            <div key={k.etiket}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: k.renk, flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.75rem', fontWeight: 500, color: C.muted }}>{k.etiket}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: C.text }}>{ozet ? para(k.gelir) : '—'}</span>
+                  {k.roas !== null && ozet && (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: roasRenk(k.roas), background: C.bg, padding: '1px 7px', borderRadius: '6px', border: `1px solid ${C.border}` }}>
+                      {k.roas.toFixed(2)}x
+                    </span>
+                  )}
+                  <span style={{ fontSize: '0.68rem', color: C.faint, minWidth: '26px', textAlign: 'right' }}>
+                    {ozet ? `%${yuzde(k.gelir, ozet.toplamGelirGA4)}` : ''}
+                  </span>
+                </div>
+              </div>
+              <div style={{ height: '4px', background: C.borderLight, borderRadius: '2px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: '2px', background: k.renk, width: ozet ? `${yuzde(k.gelir, maxGelir)}%` : '0%', transition: 'width 0.7s cubic-bezier(0.4,0,0.2,1)', opacity: 0.8 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Alt istatistikler */}
+        <div style={{ padding: '12px 22px 16px', borderTop: `1px solid ${C.borderLight}`, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+          {[
+            { label: 'Satış',    value: ozet ? String(ozet.toplamSatis) : '—', renk: '#7C3AED' },
+            { label: 'Oturum',   value: ozet ? ozet.sessions.toLocaleString('tr-TR') : '—', renk: C.text },
+            { label: 'Dönüşüm', value: ozet ? `%${ozet.donusumOrani}` : '—', renk: '#2563EB' },
+            { label: 'Meta Sat', value: ozet ? String(ozet.metaSatis) : '—', renk: '#1877F2' },
+          ].map(m => (
+            <div key={m.label}>
+              <div style={{ fontSize: '0.6rem', color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>{m.label}</div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: m.renk }}>{m.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const F = 'var(--font-inter), system-ui, sans-serif'
+
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh', background: C.bg, fontFamily: F }}>
+      <Sidebar />
+      <div style={{ flex: 1, marginLeft: '220px' }}>
+
+        {/* ── TOP BAR ── */}
+        <header style={{ background: '#fff', borderBottom: `1px solid ${C.border}`, padding: '0 32px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50, boxShadow: SHADOW.xs }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: C.text, letterSpacing: '-0.01em' }}>Ana Dashboard</div>
+            <div style={{ fontSize: '0.7rem', color: C.faint, marginTop: '1px' }}>{bugun}</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+            {PRESETLER.map(p => (
+              <button key={p.id} onClick={() => setDonem(p.id)} style={{
+                padding: '5px 11px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.75rem',
+                background: donem === p.id ? C.text : 'transparent',
+                color: donem === p.id ? '#fff' : C.muted,
+                fontWeight: donem === p.id ? 600 : 400, transition: 'all 0.15s', fontFamily: F,
+              }}>{p.ad}</button>
+            ))}
+            <button onClick={() => setDonem('ozel')} style={{
+              padding: '5px 11px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem',
+              border: `1px solid ${donem === 'ozel' ? C.primary : C.border}`,
+              background: donem === 'ozel' ? '#EFF6FF' : 'transparent',
+              color: donem === 'ozel' ? C.primary : C.muted, fontWeight: donem === 'ozel' ? 600 : 400, fontFamily: F,
+            }}>Özel tarih</button>
+            <div style={{ width: '1px', height: '18px', background: C.border, margin: '0 10px' }} />
+            <Link href="/ai-analiz" style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', color: '#6D28D9', textDecoration: 'none', borderRadius: '7px', padding: '5px 14px', fontSize: '0.76rem', fontWeight: 600, fontFamily: F }}>
+              AI Merkezi
+            </Link>
+          </div>
+        </header>
+
+        {/* ── ÖZEL TARİH ── */}
+        {donem === 'ozel' && (
+          <div style={{ background: '#F8FAFC', borderBottom: `1px solid ${C.border}`, padding: '10px 32px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '0.8rem', color: C.muted, fontWeight: 500 }}>Tarih aralığı:</span>
+            <input type="date" value={baslangic} onChange={e => setBaslangic(e.target.value)} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '6px', color: C.text, padding: '5px 10px', fontSize: '0.8rem', fontFamily: F }} />
+            <span style={{ color: C.faint }}>→</span>
+            <input type="date" value={bitis} onChange={e => setBitis(e.target.value)} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '6px', color: C.text, padding: '5px 10px', fontSize: '0.8rem', fontFamily: F }} />
+            <button onClick={() => { if (baslangic && bitis) yukle('ozel', baslangic, bitis) }} style={{ background: C.primary, color: '#fff', border: 'none', borderRadius: '6px', padding: '5px 16px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, fontFamily: F }}>Uygula</button>
+          </div>
+        )}
+
+        <main style={{ padding: '32px' }}>
+
+          {/* ── HERO KPI — Clean Left Border ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+            {[
+              { label: 'Toplam Gelir',    sub: 'Tüm kanallar · Karmen + Cotto', value: toplam ? para(dGelir) : null,                              ...KPI.gelir },
+              { label: 'Reklam Harcama', sub: 'Meta Ads + Google Ads',          value: toplam ? para(dHarcama) : null,                            ...KPI.harcama },
+              { label: 'Genel ROAS',     sub: 'Ücretli kanallara göre',         value: toplam ? `${genelROAS.toFixed(2)}x` : null,                ...KPI.roas },
+              { label: 'Toplam Satış',   sub: `${toplam ? toplam.sessions.toLocaleString('tr-TR') : '—'} oturum`,  value: toplam ? toplam.toplamSatis.toLocaleString('tr-TR') : null, ...KPI.satis },
+            ].map(k => (
+              <div key={k.label} style={{ background: '#fff', border: `1px solid ${C.border}`, borderLeft: `4px solid ${k.border}`, borderRadius: '10px', padding: '20px', boxShadow: SHADOW.sm }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>{k.label}</div>
+                {yukleniyor ? (
+                  <div className="shimmer" style={{ height: '36px', width: '80%', marginBottom: '8px' }} />
+                ) : (
+                  <div style={{ fontSize: '1.9rem', fontWeight: 800, color: k.text, letterSpacing: '-0.03em', lineHeight: 1, marginBottom: '6px' }}>
+                    {k.value ?? '—'}
+                  </div>
+                )}
+                <div style={{ fontSize: '0.7rem', color: C.faint }}>{k.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── MARKA KARTLARI ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+            <MarkaKarti ozet={karmen} isim="Karmen Halı" aksanRenk="#C2410C" ikon="🟠" />
+            <MarkaKarti ozet={cotto}  isim="Cotto Home"  aksanRenk="#1D4ED8" ikon="🔵" />
+          </div>
+
+          {/* ── KANAL DAĞILIMI ── */}
+          {toplam && toplam.toplamGelirGA4 > 0 && (
+            <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: SHADOW.sm }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                <div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: C.text, letterSpacing: '-0.01em' }}>Gelir Kanal Dağılımı</div>
+                  <div style={{ fontSize: '0.7rem', color: C.faint, marginTop: '3px' }}>Karmen + Cotto toplam · {donemAdi}</div>
+                </div>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: KPI.gelir.text, letterSpacing: '-0.02em' }}>{para(toplam.toplamGelirGA4)}</div>
+              </div>
+
+              {/* Yığılmış bar */}
+              <div style={{ display: 'flex', height: '8px', borderRadius: '4px', overflow: 'hidden', marginBottom: '20px', gap: '2px', background: C.borderLight }}>
+                {[
+                  { gelir: toplam.metaGelirGA4, renk: '#1877F2' },
+                  { gelir: toplam.googleGelirGA4, renk: '#F59E0B' },
+                  { gelir: toplam.organikGelirGA4, renk: '#10B981' },
+                ].map((seg, i) => (
+                  <div key={i} style={{ width: `${yuzde(seg.gelir, toplam.toplamGelirGA4)}%`, background: seg.renk, minWidth: seg.gelir > 0 ? '3px' : '0', transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)' }} />
+                ))}
+              </div>
+
+              {/* Kanal cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                {[
+                  { label: 'Meta Ads',         gelir: toplam.metaGelirGA4,    renk: '#1877F2', roas: `${(toplam.metaGelirGA4 / Math.max(toplam.metaHarcama, 1)).toFixed(2)}x` },
+                  { label: 'Google Ads',        gelir: toplam.googleGelirGA4,  renk: '#F59E0B', roas: `${(toplam.googleGelirGA4 / Math.max(toplam.googleHarcama, 1)).toFixed(2)}x` },
+                  { label: 'Organik & Direkt',  gelir: toplam.organikGelirGA4, renk: '#10B981', roas: null },
+                ].map(k => (
+                  <div key={k.label} style={{ background: C.bg, borderRadius: '8px', padding: '14px 16px', border: `1px solid ${C.border}`, borderTop: `3px solid ${k.renk}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: k.renk }} />
+                        <span style={{ fontSize: '0.73rem', fontWeight: 600, color: C.muted }}>{k.label}</span>
+                      </div>
+                      {k.roas && <span style={{ fontSize: '0.68rem', fontWeight: 600, color: k.renk, background: '#fff', padding: '1px 7px', borderRadius: '5px', border: `1px solid ${C.border}` }}>ROAS {k.roas}</span>}
+                    </div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 800, color: C.text, letterSpacing: '-0.02em' }}>{para(k.gelir)}</div>
+                    <div style={{ fontSize: '0.68rem', color: C.faint, marginTop: '4px' }}>%{yuzde(k.gelir, toplam.toplamGelirGA4)} toplam gelir</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── PLATFORM NAV ── */}
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>Platformlar</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+              {PLATFORMS.map(p => (
+                p.aktif ? (
+                  <Link key={p.id} href={p.href} style={{ textDecoration: 'none' }}>
+                    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '12px', padding: '16px 18px', cursor: 'pointer', transition: 'all 0.15s', borderLeft: `4px solid ${p.renk}`, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}
+                      onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.boxShadow = '0 6px 16px rgba(0,0,0,0.1)'; el.style.transform = 'translateY(-2px)' }}
+                      onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'; el.style.transform = 'translateY(0)' }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                          <span style={{ fontSize: '1.3rem' }}>{p.icon}</span>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: C.text }}>{p.ad}</div>
+                            <div style={{ fontSize: '0.68rem', color: C.faint }}>{p.aciklama}</div>
+                          </div>
+                        </div>
+                        <span style={{ background: '#DCFCE7', color: '#166534', fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: '10px' }}>● Aktif</span>
+                      </div>
+                      {/* Platform bazlı mini metrikler */}
+                      {p.id === 'meta' && toplam && (
+                        <div style={{ display: 'flex', gap: '14px', borderTop: `1px solid ${C.borderLight}`, paddingTop: '10px', marginTop: '4px' }}>
+                          <div><div style={{ fontSize: '0.6rem', color: C.faint }}>Harcama</div><div style={{ fontSize: '0.85rem', fontWeight: 800, color: METRIK_RENK.harcama }}>{para(toplam.metaHarcama)}</div></div>
+                          <div><div style={{ fontSize: '0.6rem', color: C.faint }}>Gelir</div><div style={{ fontSize: '0.85rem', fontWeight: 800, color: METRIK_RENK.gelir }}>{para(toplam.metaGelirGA4)}</div></div>
+                          <div><div style={{ fontSize: '0.6rem', color: C.faint }}>ROAS</div><div style={{ fontSize: '0.85rem', fontWeight: 800, color: roasRenk(toplam.metaGelirGA4 / Math.max(toplam.metaHarcama, 1)) }}>{(toplam.metaGelirGA4 / Math.max(toplam.metaHarcama, 1)).toFixed(2)}x</div></div>
+                        </div>
+                      )}
+                      {p.id === 'google' && toplam && (
+                        <div style={{ display: 'flex', gap: '14px', borderTop: `1px solid ${C.borderLight}`, paddingTop: '10px', marginTop: '4px' }}>
+                          <div><div style={{ fontSize: '0.6rem', color: C.faint }}>Harcama</div><div style={{ fontSize: '0.85rem', fontWeight: 800, color: METRIK_RENK.harcama }}>{para(toplam.googleHarcama)}</div></div>
+                          <div><div style={{ fontSize: '0.6rem', color: C.faint }}>Gelir</div><div style={{ fontSize: '0.85rem', fontWeight: 800, color: METRIK_RENK.gelir }}>{para(toplam.googleGelirGA4)}</div></div>
+                          <div><div style={{ fontSize: '0.6rem', color: C.faint }}>ROAS</div><div style={{ fontSize: '0.85rem', fontWeight: 800, color: roasRenk(toplam.googleGelirGA4 / Math.max(toplam.googleHarcama, 1)) }}>{(toplam.googleGelirGA4 / Math.max(toplam.googleHarcama, 1)).toFixed(2)}x</div></div>
+                        </div>
+                      )}
+                      {p.id === 'analytics' && toplam && (
+                        <div style={{ display: 'flex', gap: '14px', borderTop: `1px solid ${C.borderLight}`, paddingTop: '10px', marginTop: '4px' }}>
+                          <div><div style={{ fontSize: '0.6rem', color: C.faint }}>Toplam Gelir</div><div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#15803d' }}>{para(toplam.toplamGelirGA4)}</div></div>
+                          <div><div style={{ fontSize: '0.6rem', color: C.faint }}>Oturum</div><div style={{ fontSize: '0.85rem', fontWeight: 800, color: C.text }}>{toplam.sessions.toLocaleString('tr-TR')}</div></div>
+                          <div><div style={{ fontSize: '0.6rem', color: C.faint }}>Satış</div><div style={{ fontSize: '0.85rem', fontWeight: 800, color: METRIK_RENK.donusum }}>{toplam.toplamSatis}</div></div>
+                        </div>
+                      )}
+                      {p.id === 'ticimax' && (
+                        <div style={{ borderTop: `1px solid ${C.borderLight}`, paddingTop: '10px', marginTop: '4px' }}>
+                          <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>Ürün ve kategori SEO yönetimi →</div>
+                        </div>
+                      )}
+                      {p.id === 'search' && (
+                        <div style={{ borderTop: `1px solid ${C.borderLight}`, paddingTop: '10px', marginTop: '4px' }}>
+                          <div style={{ fontSize: '0.7rem', color: p.renk, fontWeight: 600 }}>Tıklama, gösterim ve sıralama verilerini gör →</div>
+                        </div>
+                      )}
+                      {!['meta','google','analytics','ticimax','search'].includes(p.id) && (
+                        <div style={{ borderTop: `1px solid ${C.borderLight}`, paddingTop: '10px', marginTop: '4px' }}>
+                          <div style={{ fontSize: '0.7rem', color: p.renk, fontWeight: 600 }}>Platforma git →</div>
+                        </div>
+                      )}
+                    </div>
+                  </Link>
+                ) : (
+                  <div key={p.id} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '12px', padding: '16px 18px', opacity: 0.5, borderLeft: `4px solid ${p.renk}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                        <span style={{ fontSize: '1.3rem' }}>{p.icon}</span>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '0.88rem', color: C.text }}>{p.ad}</div>
+                          <div style={{ fontSize: '0.68rem', color: C.faint }}>{p.aciklama}</div>
+                        </div>
+                      </div>
+                      <span style={{ background: C.borderLight, color: C.faint, fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: '10px' }}>Yakında</span>
+                    </div>
+                  </div>
+                )
               ))}
-              <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: '#8b949e' }}>
-                {filtreliKampanyalar.length} kampanya gösteriliyor
-              </span>
             </div>
-
-            {/* KAMPANYA TABLOSU */}
-            <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '12px', overflow: 'hidden' }}>
-              <div style={{ padding: '14px 20px', borderBottom: '1px solid #30363d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>{hesapBilgi.emoji} {hesapBilgi.ad} — Kampanyalar</span>
-                <span style={{ fontSize: '0.75rem', color: '#8b949e' }}>▶ tıkla → reklam setleri · tekrar tıkla → reklamlar</span>
-              </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
-                  <thead>
-                    <tr style={{ background: '#0d1117' }}>
-                      <th style={{ textAlign: 'left', fontSize: '0.68rem', color: '#8b949e', textTransform: 'uppercase', padding: '9px 16px', borderBottom: '1px solid #30363d', width: '260px' }}>Kampanya</th>
-                      <th style={{ textAlign: 'left', fontSize: '0.68rem', color: '#8b949e', textTransform: 'uppercase', padding: '9px 12px', borderBottom: '1px solid #30363d' }}>Durum</th>
-                      {ALANLAR.map(a => (
-                        <th key={a} onClick={() => sutunTikla(a)} style={{
-                          textAlign: 'left', fontSize: '0.68rem', textTransform: 'uppercase', padding: '9px 12px',
-                          borderBottom: '1px solid #30363d', cursor: 'pointer', userSelect: 'none',
-                          color: siralama.alan === a ? '#e6edf3' : '#8b949e',
-                          background: siralama.alan === a ? '#21262d' : 'transparent',
-                        }}>
-                          {ALAN_BASLIK[a]} {siralama.alan === a ? (siralama.yon === 'desc' ? '↓' : '↑') : '↕'}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtreliKampanyalar.map(k => (
-                      <>
-                        <tr key={k.id} onClick={() => kampanyaTikla(k)} style={{ cursor: 'pointer', background: acikKampanya === k.id ? '#1c2128' : 'transparent' }}
-                          onMouseEnter={e => { if (acikKampanya !== k.id) e.currentTarget.style.background = '#1c2128' }}
-                          onMouseLeave={e => { if (acikKampanya !== k.id) e.currentTarget.style.background = 'transparent' }}>
-                          <td style={{ padding: '12px 16px', fontSize: '0.83rem', borderBottom: '1px solid #21262d' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ color: '#8b949e', fontSize: '0.75rem', minWidth: '12px' }}>{acikKampanya === k.id ? '▼' : '▶'}</span>
-                              <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px' }}>{k.name}</span>
-                            </div>
-                          </td>
-                          <td style={{ padding: '12px', borderBottom: '1px solid #21262d' }}><Badge status={k.status} /></td>
-                          {ALANLAR.map(a => <MetrikHucre key={a} ins={k.insights?.data[0]} alan={a} />)}
-                        </tr>
-
-                        {/* REKLAM SETLERİ */}
-                        {acikKampanya === k.id && (
-                          setYukLen === k.id ? (
-                            <tr key={`${k.id}-l`}><td colSpan={11} style={{ padding: '10px 40px', color: '#8b949e', fontSize: '0.78rem', background: '#161b22', borderBottom: '1px solid #21262d' }}>⏳ Reklam setleri yükleniyor...</td></tr>
-                          ) : (reklamSetleri[k.id] || []).map(s => (
-                            <>
-                              <tr key={s.id} onClick={() => setTikla(s)} style={{ cursor: 'pointer', background: acikSet === s.id ? '#21262d' : '#191e24' }}
-                                onMouseEnter={e => { if (acikSet !== s.id) e.currentTarget.style.background = '#21262d' }}
-                                onMouseLeave={e => { if (acikSet !== s.id) e.currentTarget.style.background = '#191e24' }}>
-                                <td style={{ padding: '10px 16px 10px 36px', fontSize: '0.8rem', borderBottom: '1px solid #21262d' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span style={{ color: '#8b949e', fontSize: '0.7rem', minWidth: '12px' }}>{acikSet === s.id ? '▼' : '▶'}</span>
-                                    <span style={{ color: '#79c0ff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>📦 {s.name}</span>
-                                  </div>
-                                </td>
-                                <td style={{ padding: '10px 12px', borderBottom: '1px solid #21262d' }}><Badge status={s.status} /></td>
-                                {ALANLAR.map(a => <MetrikHucre key={a} ins={s.insights?.data[0]} alan={a} />)}
-                              </tr>
-
-                              {/* REKLAMLAR */}
-                              {acikSet === s.id && (
-                                rekYukLen === s.id ? (
-                                  <tr key={`${s.id}-l`}><td colSpan={11} style={{ padding: '8px 64px', color: '#8b949e', fontSize: '0.75rem', background: '#0d1117', borderBottom: '1px solid #21262d' }}>⏳ Reklamlar yükleniyor...</td></tr>
-                                ) : (reklamlar[s.id] || []).map(r => (
-                                  <tr key={r.id} style={{ background: '#0d1117' }}>
-                                    <td style={{ padding: '9px 16px 9px 58px', fontSize: '0.78rem', borderBottom: '1px solid #21262d' }}>
-                                      <span style={{ color: '#d2a8ff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: '180px' }}>🎯 {r.name}</span>
-                                    </td>
-                                    <td style={{ padding: '9px 12px', borderBottom: '1px solid #21262d' }}><Badge status={r.status} /></td>
-                                    {ALANLAR.map(a => <MetrikHucre key={a} ins={r.insights?.data[0]} alan={a} />)}
-                                  </tr>
-                                ))
-                              )}
-                            </>
-                          ))
-                        )}
-                      </>
-                    ))}
-                    {filtreliKampanyalar.length === 0 && (
-                      <tr><td colSpan={11} style={{ textAlign: 'center', padding: '40px', color: '#8b949e' }}>Kampanya bulunamadı</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        )}
-
-        {yukleniyor && (
-          <div style={{ textAlign: 'center', padding: '80px', color: '#8b949e' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '12px' }}>⏳</div>
-            <p>{hesapBilgi.ad} kampanyaları yükleniyor...</p>
           </div>
-        )}
 
-        {hata && (
-          <div style={{ background: '#3a1a1a', border: '1px solid #f85149', borderRadius: '10px', padding: '16px 20px', color: '#f85149' }}>
-            <strong>⚠️ Hata:</strong> {hata}
-            <p style={{ color: '#8b949e', marginTop: '6px', fontSize: '0.82rem' }}>Token süresi dolmuş olabilir. .env.local dosyasındaki META_ACCESS_TOKEN&apos;ı güncelle.</p>
-          </div>
-        )}
-      </main>
+        </main>
+      </div>
+
+      {/* shimmer animation */}
+      <style>{`@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }`}</style>
     </div>
   )
 }

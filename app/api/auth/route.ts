@@ -1,26 +1,48 @@
 import { NextResponse } from 'next/server'
+import bcrypt from 'bcryptjs'
+import { emailIleGetir } from '@/lib/userStore'
+import { sessionOlustur, COOKIE_ADI, COOKIE_AYARLAR } from '@/lib/session'
 
+// POST /api/auth — Giriş
 export async function POST(request: Request) {
-  const { sifre } = await request.json()
+  try {
+    const { email, sifre } = await request.json()
 
-  if (sifre !== process.env.PANEL_SIFRE) {
-    return NextResponse.json({ error: 'Hatalı şifre' }, { status: 401 })
+    if (!email || !sifre) {
+      return NextResponse.json({ error: 'E-posta ve şifre zorunludur' }, { status: 400 })
+    }
+
+    const kullanici = emailIleGetir(email)
+    if (!kullanici || !kullanici.aktif) {
+      return NextResponse.json({ error: 'E-posta veya şifre hatalı' }, { status: 401 })
+    }
+
+    const eslesme = await bcrypt.compare(sifre, kullanici.passwordHash)
+    if (!eslesme) {
+      return NextResponse.json({ error: 'E-posta veya şifre hatalı' }, { status: 401 })
+    }
+
+    const token = await sessionOlustur({
+      userId:   kullanici.id,
+      ad:       kullanici.ad,
+      email:    kullanici.email,
+      rol:      kullanici.rol,
+      yetkiler: kullanici.yetkiler,
+    })
+
+    const response = NextResponse.json({ ok: true, ad: kullanici.ad, rol: kullanici.rol })
+    response.cookies.set(COOKIE_ADI, token, COOKIE_AYARLAR)
+    return response
+
+  } catch (e) {
+    console.error('Auth hatası:', e)
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
   }
-
-  const response = NextResponse.json({ ok: true })
-  response.cookies.set('panel_auth', process.env.PANEL_SIFRE!, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 60 * 60 * 24 * 7, // 7 gün
-    path: '/',
-    sameSite: 'lax',
-  })
-
-  return response
 }
 
+// DELETE /api/auth — Çıkış
 export async function DELETE() {
   const response = NextResponse.json({ ok: true })
-  response.cookies.delete('panel_auth')
+  response.cookies.delete(COOKIE_ADI)
   return response
 }

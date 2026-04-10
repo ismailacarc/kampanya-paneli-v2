@@ -1,0 +1,33 @@
+{
+  "users": [
+    {
+      "id": "1",
+      "ad": "İsmail Acar",
+      "email": "ismailacar.c@gmail.com",
+      "passwordHash": "$2b$10$8SFgRi6M8iOZvD3YhuO7RemOD8C6srgzpJwIWzTsH6YiijSUvZnKe",
+      "rol": "admin",
+      "aktif": true,
+      "olusturuldu": "2026-04-10",
+      "yetkiler": {
+        "sayfalar": {
+          "meta": true,
+          "google_ads": true,
+          "analytics": true,
+          "search_console": true,
+          "ticimax_seo": true,
+          "ai_merkezi": true
+        },
+        "markalar": {
+          "karmen": true,
+          "cotto": true
+        },
+        "ciro_goster": true,
+        "harcama_goster": true,
+        "roas_goster": true,
+        "ai_uret": true,
+        "blog_yaz": true,
+        "admin_panel": true
+      }
+    }
+  ]
+}

@@ -2,10 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { C } from '../lib/theme'
 
 export default function Login() {
-  const [sifre, setSifre] = useState('')
-  const [hata, setHata] = useState('')
+  const [email,      setEmail]      = useState('')
+  const [sifre,      setSifre]      = useState('')
+  const [hata,       setHata]       = useState('')
   const [yukleniyor, setYukleniyor] = useState(false)
   const router = useRouter()
 
@@ -17,71 +19,101 @@ export default function Login() {
     const res = await fetch('/api/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sifre }),
+      body: JSON.stringify({ email, sifre }),
     })
 
     if (res.ok) {
       router.push('/')
       router.refresh()
     } else {
-      setHata('Hatalı şifre. Tekrar deneyin.')
+      const data = await res.json()
+      setHata(data.error || 'Giriş başarısız.')
       setYukleniyor(false)
     }
   }
 
   return (
     <div style={{
-      background: '#0d1117', minHeight: '100vh', display: 'flex',
+      background: C.bg, minHeight: '100vh', display: 'flex',
       alignItems: 'center', justifyContent: 'center',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
     }}>
-      <div style={{ width: '360px' }}>
+      <div style={{ width: '380px' }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>📊</div>
-          <h1 style={{ color: '#e6edf3', fontSize: '1.3rem', fontWeight: 700, margin: 0 }}>Reklam Paneli</h1>
-          <p style={{ color: '#8b949e', fontSize: '0.85rem', marginTop: '6px' }}>Karmen Halı & Cotto Home</p>
+          <div style={{ fontSize: '2.8rem', marginBottom: '14px' }}>📊</div>
+          <h1 style={{ color: C.text, fontSize: '1.3rem', fontWeight: 700, margin: 0 }}>Reklam Paneli</h1>
+          <p style={{ color: C.muted, fontSize: '0.85rem', marginTop: '6px' }}>Karmen Halı & Cotto Home</p>
         </div>
 
         <form onSubmit={girisYap} style={{
-          background: '#161b22', border: '1px solid #30363d',
-          borderRadius: '12px', padding: '28px'
+          background: C.card, border: `1px solid ${C.border}`,
+          borderRadius: '14px', padding: '28px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.07)'
         }}>
+          {/* E-posta */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', color: C.muted, fontSize: '0.82rem', fontWeight: 500, marginBottom: '6px' }}>
+              E-posta
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="ad@ornek.com"
+              autoFocus
+              style={{
+                width: '100%', background: C.input,
+                border: `1px solid ${hata ? '#DC2626' : C.border}`,
+                borderRadius: '8px', color: C.text, padding: '10px 14px',
+                fontSize: '0.92rem', boxSizing: 'border-box', outline: 'none',
+              }}
+            />
+          </div>
+
+          {/* Şifre */}
           <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', color: '#8b949e', fontSize: '0.82rem', marginBottom: '8px' }}>
-              Panel Şifresi
+            <label style={{ display: 'block', color: C.muted, fontSize: '0.82rem', fontWeight: 500, marginBottom: '6px' }}>
+              Şifre
             </label>
             <input
               type="password"
               value={sifre}
               onChange={e => setSifre(e.target.value)}
               placeholder="••••••••"
-              autoFocus
               style={{
-                width: '100%', background: '#0d1117', border: `1px solid ${hata ? '#f85149' : '#30363d'}`,
-                borderRadius: '6px', color: '#e6edf3', padding: '10px 14px',
-                fontSize: '0.95rem', boxSizing: 'border-box', outline: 'none'
+                width: '100%', background: C.input,
+                border: `1px solid ${hata ? '#DC2626' : C.border}`,
+                borderRadius: '8px', color: C.text, padding: '10px 14px',
+                fontSize: '0.92rem', boxSizing: 'border-box', outline: 'none',
               }}
             />
           </div>
 
           {hata && (
-            <div style={{ background: '#3a1a1a', border: '1px solid #f85149', borderRadius: '6px', padding: '8px 12px', color: '#f85149', fontSize: '0.8rem', marginBottom: '16px' }}>
-              {hata}
+            <div style={{
+              background: '#FEF2F2', border: '1px solid #FECACA',
+              borderRadius: '7px', padding: '9px 14px',
+              color: '#DC2626', fontSize: '0.8rem', marginBottom: '16px'
+            }}>
+              ❌ {hata}
             </div>
           )}
 
-          <button type="submit" disabled={yukleniyor || !sifre} style={{
-            width: '100%', padding: '10px', background: sifre ? '#1f6feb' : '#21262d',
-            color: sifre ? '#fff' : '#484f58', border: 'none', borderRadius: '6px',
-            fontSize: '0.9rem', fontWeight: 600, cursor: sifre ? 'pointer' : 'default',
+          <button type="submit" disabled={yukleniyor || !email || !sifre} style={{
+            width: '100%', padding: '11px',
+            background: (email && sifre) ? C.primary : C.borderLight,
+            color: (email && sifre) ? '#fff' : C.faint,
+            border: 'none', borderRadius: '8px',
+            fontSize: '0.9rem', fontWeight: 600,
+            cursor: (email && sifre) ? 'pointer' : 'default',
             transition: 'all 0.15s'
           }}>
-            {yukleniyor ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+            {yukleniyor ? '⏳ Giriş yapılıyor...' : 'Giriş Yap'}
           </button>
         </form>
 
-        <p style={{ textAlign: 'center', color: '#484f58', fontSize: '0.75rem', marginTop: '20px' }}>
-          Şifreyi unutanlar için: ismailacar.c@gmail.com
+        <p style={{ textAlign: 'center', color: C.faint, fontSize: '0.75rem', marginTop: '20px' }}>
+          Sorun için: ismailacar.c@gmail.com
         </p>
       </div>
     </div>
