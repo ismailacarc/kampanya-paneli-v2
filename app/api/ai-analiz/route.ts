@@ -5,7 +5,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function POST(request: Request) {
   try {
-    const { kampanyalar, hesapAdi, skipStatusFilter } = await request.json()
+    const { kampanyalar, hesapAdi, skipStatusFilter, model } = await request.json()
 
     if (!kampanyalar || kampanyalar.length === 0) {
       return NextResponse.json({ error: 'Kampanya verisi bulunamadı' }, { status: 400 })
@@ -98,21 +98,34 @@ Aşağıdaki JSON formatında yanıt ver (başka hiçbir şey yazma, sadece JSON
   ]
 }`
 
+    const modelId = model || 'claude-sonnet-4-6'
     const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2000,
+      model: modelId,
+      max_tokens: 8000,
       messages: [{ role: 'user', content: prompt }]
     })
 
     const icerik = message.content[0].type === 'text' ? message.content[0].text : ''
 
-    // JSON parse et
+    // JSON parse et — robust: trailing comma & markdown kod bloğu temizle
     const jsonMatch = icerik.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
       return NextResponse.json({ analiz: icerik, ham: true })
     }
 
-    const analizData = JSON.parse(jsonMatch[0])
+    let temiz = jsonMatch[0]
+      .replace(/,\s*([\]}])/g, '$1')   // trailing comma'ları kaldır
+      .replace(/[\u0000-\u001F\u007F]/g, ' ') // kontrol karakterleri temizle
+      .trim()
+
+    let analizData: unknown
+    try {
+      analizData = JSON.parse(temiz)
+    } catch {
+      // Son çare: ham metin olarak dön
+      console.error('JSON parse hatası, ham metin dönülüyor')
+      return NextResponse.json({ analiz: icerik, ham: true })
+    }
     return NextResponse.json({ analiz: analizData, ham: false })
 
   } catch (error) {

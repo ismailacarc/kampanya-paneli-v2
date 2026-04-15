@@ -731,7 +731,7 @@ export default function AiMerkezi() {
       const res = await fetch('/api/ai-sohbet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ analiz, soru, hesapAdi: analizHesapAdi })
+        body: JSON.stringify({ analiz, soru, hesapAdi: analizHesapAdi, model: globalModelOku() })
       })
       const data = await res.json()
       setSohbetGecmis(prev => [...prev, { soru, yanit: data.yanit || data.error || 'Yanıt alınamadı' }])

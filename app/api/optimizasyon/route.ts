@@ -5,9 +5,10 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function POST(request: Request) {
   try {
-    const { kampanyalar, hesap, donem, model } = await request.json()
+    const { kampanyalar, hesap, hesapAdi: hesapAdiParam, donem, donemAdi, model } = await request.json()
 
-    const hesapAdi = hesap === 'karmen' ? 'Karmen Halı' : 'Cotto Home'
+    const hesapAdi = hesapAdiParam || (hesap === 'karmen' ? 'Karmen Halı' : 'Cotto Home')
+    const donemLabel = donemAdi || (donem ? `Son ${donem} Gün` : 'Seçili Dönem')
 
     // Kampanya verisini özetle
     const kampanyaOzeti = kampanyalar.map((k: {
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
 
     const prompt = `Sen ${hesapAdi} markasının Meta Ads hesabını analiz eden bir dijital pazarlama uzmanısın.
 
-## HESAP VERİSİ (Son ${donem} Gün)
+## HESAP VERİSİ (${donemLabel})
 ${kampanyaOzeti}
 
 ## GÖREVİN

@@ -93,7 +93,7 @@ Aşağıdaki JSON formatında yanıt ver (başka hiçbir şey yazma, sadece JSON
   ]
 }`
 
-    const usedModel = model || 'claude-haiku-4-5-20251001'
+    const usedModel = model || 'claude-sonnet-4-6'
     const response = await client.messages.create({
       model: usedModel,
       max_tokens: 2500,

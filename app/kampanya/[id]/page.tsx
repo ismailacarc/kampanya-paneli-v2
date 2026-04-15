@@ -9,9 +9,160 @@ import { para, sayi, getDonusum, getGelir, getRoas, roasRenk, kampanyaSkoru, onc
 import { UrunSatir } from '../../lib/types'
 import { excelExport } from '../../lib/export'
 import AiRapor from '../../components/AiRapor'
-import { kayitEkle, OptimizasyonKaydi } from '../../lib/gecmis'
+import { kayitEkle, aksiyonlariCikar } from '../../lib/gecmis'
+import Sidebar, { globalModelOku } from '../../components/Sidebar'
+import { analizEkle, analizGuncelle, simdi } from '../../lib/analizStore'
 
 const HESAP_ADI: Record<string, string> = Object.fromEntries(HESAPLAR.map(h => [h.id, h.ad]))
+
+// ─── Optimizasyon Günlüğü Kaydet Drawer ──────────────────────────────────────
+function GunlukKaydetDrawer({ tumAksiyonlar, hesap, hesapAdi, donemAdi, kampanyaAdi, kampanyaId, metriks, seciliBaslangic, onKapat, onKaydet }: {
+  tumAksiyonlar: string[]
+  hesap: string
+  hesapAdi: string
+  donemAdi: string
+  kampanyaAdi: string
+  kampanyaId: string
+  metriks: { harcama: number; gelir: number; roas: number; donusum: number }
+  seciliBaslangic?: Set<number>
+  onKapat: () => void
+  onKaydet: () => void
+}) {
+  const [secili, setSecili] = useState<Set<number>>(
+    seciliBaslangic ?? new Set(tumAksiyonlar.map((_, i) => i))
+  )
+  const [notlar, setNotlar] = useState('')
+  const [hatGun, setHatGun] = useState(7)
+  const [hatAktif, setHatAktif] = useState(false)
+
+  function toggle(i: number) {
+    setSecili(prev => { const y = new Set(prev); y.has(i) ? y.delete(i) : y.add(i); return y })
+  }
+
+  function kaydet() {
+    const hatirlatmaTarihi = hatAktif
+      ? (() => { const t = new Date(); t.setDate(t.getDate() + hatGun); return t.toISOString().split('T')[0] })()
+      : null
+    kayitEkle({
+      id: Date.now().toString(),
+      tarih: new Date().toISOString(),
+      hesap,
+      donemAdi,
+      donemId: donemAdi,
+      platform: 'meta',
+      kaynak: 'kampanya-detay',
+      kampanyaIds: [kampanyaId],
+      kampanyaAdlari: [kampanyaAdi],
+      metriks,
+      yapilanlar: tumAksiyonlar.filter((_, i) => secili.has(i)),
+      notlar,
+      hatirlatmaGun: hatAktif ? hatGun : 0,
+      hatirlatmaTarihi,
+      hatirlatmaGoruldu: false,
+    })
+    onKaydet()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 300, display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end' }}
+      onClick={e => { if (e.target === e.currentTarget) onKapat() }}>
+      <div style={{ width: '480px', height: '100vh', background: C.card, borderLeft: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column' }}>
+
+        {/* Başlık */}
+        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${C.border}`, background: '#F5F3FF', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#4C1D95' }}>📥 Optimizasyon Günlüğüne Kaydet</div>
+            <div style={{ fontSize: '0.72rem', color: '#7C3AED', marginTop: '4px' }}>{hesapAdi} · {donemAdi}</div>
+            <div style={{ fontSize: '0.7rem', color: '#9D71DC', marginTop: '2px', maxWidth: '320px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kampanyaAdi}</div>
+          </div>
+          <button onClick={onKapat} style={{ background: 'transparent', border: 'none', color: C.muted, cursor: 'pointer', fontSize: '1.4rem', flexShrink: 0 }}>✕</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+
+          {/* Anlık metrikler */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            {[
+              { l: 'Harcama',  v: `₺${metriks.harcama.toFixed(2)}`,    r: '#DC2626' },
+              { l: 'Gelir',    v: `₺${metriks.gelir.toFixed(2)}`,      r: '#059669' },
+              { l: 'ROAS',     v: `${metriks.roas.toFixed(2)}x`,       r: '#0284C7' },
+              { l: 'Dönüşüm', v: String(metriks.donusum),              r: '#7C3AED' },
+            ].map(m => (
+              <div key={m.l} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px 14px' }}>
+                <div style={{ fontSize: '0.63rem', color: C.faint, textTransform: 'uppercase', fontWeight: 600, marginBottom: '4px' }}>{m.l}</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: m.r }}>{m.v}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Aksiyonlar */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div style={{ fontSize: '0.7rem', color: C.muted, textTransform: 'uppercase', fontWeight: 700 }}>Yapılacak Aksiyonlar</div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button onClick={() => setSecili(new Set(tumAksiyonlar.map((_, i) => i)))}
+                  style={{ fontSize: '0.68rem', color: '#7C3AED', background: '#EDE9FE', border: '1px solid #DDD6FE', borderRadius: '4px', padding: '2px 7px', cursor: 'pointer' }}>Tümü</button>
+                <button onClick={() => setSecili(new Set())}
+                  style={{ fontSize: '0.68rem', color: C.muted, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '4px', padding: '2px 7px', cursor: 'pointer' }}>Temizle</button>
+              </div>
+            </div>
+            {tumAksiyonlar.length === 0
+              ? <div style={{ fontSize: '0.82rem', color: C.faint, fontStyle: 'italic' }}>Aksiyon çıkarılamadı.</div>
+              : <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  {tumAksiyonlar.map((a, i) => (
+                    <label key={i} style={{
+                      display: 'flex', gap: '10px', padding: '8px 10px', borderRadius: '8px', cursor: 'pointer',
+                      background: secili.has(i) ? '#EDE9FE' : C.bg,
+                      border: `1px solid ${secili.has(i) ? '#DDD6FE' : C.border}`,
+                    }}>
+                      <input type="checkbox" checked={secili.has(i)} onChange={() => toggle(i)}
+                        style={{ marginTop: '2px', accentColor: '#7C3AED', width: '14px', height: '14px', flexShrink: 0 }} />
+                      <span style={{ fontSize: '0.8rem', color: C.text, lineHeight: 1.5 }}>{a}</span>
+                    </label>
+                  ))}
+                </div>
+            }
+          </div>
+
+          {/* Notlar */}
+          <div>
+            <div style={{ fontSize: '0.7rem', color: C.muted, textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+              Notlar <span style={{ color: C.faint, fontWeight: 400, textTransform: 'none' }}>— isteğe bağlı</span>
+            </div>
+            <textarea value={notlar} onChange={e => setNotlar(e.target.value)}
+              placeholder="Gözlemlerini, karar gerekçelerini not al..."
+              rows={3} style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.bg, color: C.text, fontSize: '0.83rem', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }} />
+          </div>
+
+          {/* Hatırlatma */}
+          <div style={{ background: hatAktif ? '#EFF6FF' : C.bg, border: `1px solid ${hatAktif ? '#BAE6FD' : C.border}`, borderRadius: '10px', padding: '14px 16px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginBottom: hatAktif ? '12px' : '0' }}>
+              <input type="checkbox" checked={hatAktif} onChange={e => setHatAktif(e.target.checked)}
+                style={{ accentColor: '#0284C7', width: '16px', height: '16px' }} />
+              <div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: C.text }}>⏰ Takip hatırlatması kur</div>
+                <div style={{ fontSize: '0.72rem', color: C.muted, marginTop: '1px' }}>X gün sonra sonucu kontrol et diye hatırlatayım</div>
+              </div>
+            </label>
+            {hatAktif && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '26px' }}>
+                <input type="number" min={1} max={90} value={hatGun} onChange={e => setHatGun(parseInt(e.target.value) || 1)}
+                  style={{ width: '65px', padding: '6px 10px', borderRadius: '7px', border: '1.5px solid #0284C7', background: '#fff', color: C.text, fontSize: '1rem', fontWeight: 700, textAlign: 'center' }} />
+                <span style={{ fontSize: '0.85rem', color: '#0369A1', fontWeight: 500 }}>gün sonra hatırlat</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Kaydet Butonu */}
+        <div style={{ padding: '16px 24px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '10px' }}>
+          <button onClick={onKapat} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${C.border}`, background: 'transparent', color: C.muted, cursor: 'pointer', fontSize: '0.85rem' }}>İptal</button>
+          <button onClick={kaydet} style={{ flex: 2, padding: '10px', borderRadius: '8px', border: 'none', background: '#7C3AED', color: '#fff', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 700 }}>📥 Günlüğe Kaydet</button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function Badge({ status }: { status: string }) {
   const aktif = status === 'ACTIVE'
@@ -140,6 +291,12 @@ export default function KampanyaDetay() {
   const [aiAnaliz, setAiAnaliz] = useState<Record<string, unknown> | null>(null)
   const [aiYukleniyor, setAiYukleniyor] = useState(false)
   const [aiAcik, setAiAcik] = useState(false)
+  const [gunlugeKaydetAcik, setGunlugeKaydetAcik] = useState(false)
+  const [gunlukKaydedildi, setGunlukKaydedildi] = useState(false)
+  const [seciliAksiyonlar, setSeciliAksiyonlar] = useState<Set<number>>(new Set())
+  function aksiyonToggle(idx: number) {
+    setSeciliAksiyonlar(prev => { const y = new Set(prev); y.has(idx) ? y.delete(idx) : y.add(idx); return y })
+  }
   const [hizliNotAcik, setHizliNotAcik] = useState(false)
   const [hizliNotMetin, setHizliNotMetin] = useState('')
   const [hizliNotKaydedildi, setHizliNotKaydedildi] = useState(false)
@@ -238,6 +395,19 @@ export default function KampanyaDetay() {
     setAiAcik(true)
     setAiAnaliz(null)
 
+    const analizId = Date.now().toString()
+    analizEkle({
+      id: analizId,
+      tarih: simdi(),
+      kaynak: 'kampanya-detay',
+      platform: 'meta',
+      hesap,
+      donemAdi,
+      kampanyaAdi,
+      kampanyaId: id,
+      durum: 'bekliyor',
+    })
+
     try {
       const toplamHarcama = reklamSetleri.reduce((acc, s) => acc + parseFloat(s.insights?.data[0]?.spend || '0'), 0)
       const toplamGelir = reklamSetleri.reduce((acc, s) => acc + getGelir(s.insights?.data[0]), 0)
@@ -273,13 +443,30 @@ export default function KampanyaDetay() {
         body: JSON.stringify({
           kampanyalar: gonderilecek,
           hesapAdi: `${hesapAdi} / ${kampanyaAdi}`,
-          skipStatusFilter: true
+          skipStatusFilter: true,
+          model: globalModelOku()
         })
       })
       const data = await res.json()
-      setAiAnaliz(data.error ? { hata: data.error } : data.analiz)
+      const analizSonuc = data.error ? { hata: data.error } : data.analiz
+      setAiAnaliz(analizSonuc)
+      // Hiçbiri seçili değil — kullanıcı günlüğe eklemek istediklerini kendisi işaretler
+      setSeciliAksiyonlar(new Set())
+      // Birleşik depoya kaydet
+      analizGuncelle(analizId, {
+        durum: data.error ? 'hata' : 'tamamlandi',
+        hataMesaji: data.error,
+        aiAnaliz: analizSonuc,
+        metrikler: {
+          harcama: reklamSetleri.reduce((a, s) => a + parseFloat(s.insights?.data[0]?.spend || '0'), 0),
+          gelir: reklamSetleri.reduce((a, s) => a + getGelir(s.insights?.data[0]), 0),
+          roas,
+          donusum: reklamSetleri.reduce((a, s) => a + getDonusum(s.insights?.data[0]), 0),
+        }
+      })
     } catch {
       setAiAnaliz({ hata: 'Bağlantı hatası' })
+      analizGuncelle(analizId, { durum: 'hata', hataMesaji: 'Bağlantı hatası' })
     }
     setAiYukleniyor(false)
   }
@@ -413,7 +600,10 @@ export default function KampanyaDetay() {
   const donemAdi = PRESETLER.find(p => p.id === donem)?.ad || `Son ${donem} Gün`
 
   return (
-    <div style={{ background: C.bg, minHeight: '100vh', color: C.text, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+    <>
+    <div style={{ display: 'flex', background: C.bg, minHeight: '100vh', color: C.text, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+      <Sidebar />
+      <div style={{ flex: 1, marginLeft: '220px', minWidth: 0 }}>
 
       {/* HEADER */}
       <header style={{
@@ -550,7 +740,38 @@ export default function KampanyaDetay() {
                     hesapAdi={`${hesapAdi} / ${kampanyaAdi}`}
                     donemAdi={donemAdi}
                     onKapat={() => setAiAcik(false)}
+                    seciliAksiyonlar={seciliAksiyonlar}
+                    onAksiyonToggle={aksiyonToggle}
                   />
+                  {/* Günlüğe Kaydet Butonu */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                    {gunlukKaydedildi ? (
+                      <div style={{ fontSize: '0.83rem', color: '#059669', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        ✅ Optimizasyon günlüğüne kaydedildi
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {seciliAksiyonlar.size === 0 && (
+                          <span style={{ fontSize: '0.75rem', color: '#9CA3AF', fontStyle: 'italic' }}>
+                            ☝️ Yukarıdan aksiyon seç
+                          </span>
+                        )}
+                        <button
+                          onClick={() => setGunlugeKaydetAcik(true)}
+                          disabled={seciliAksiyonlar.size === 0}
+                          style={{
+                            padding: '9px 18px', borderRadius: '8px',
+                            border: `1px solid ${seciliAksiyonlar.size > 0 ? '#DDD6FE' : C.border}`,
+                            background: seciliAksiyonlar.size > 0 ? '#EDE9FE' : C.bg,
+                            color: seciliAksiyonlar.size > 0 ? '#7C3AED' : '#9CA3AF',
+                            cursor: seciliAksiyonlar.size > 0 ? 'pointer' : 'not-allowed',
+                            fontSize: '0.83rem', fontWeight: 700,
+                          }}>
+                          📥 Günlüğe Kaydet {seciliAksiyonlar.size > 0 ? `(${seciliAksiyonlar.size})` : ''}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : null
             )}
@@ -1415,6 +1636,32 @@ export default function KampanyaDetay() {
           </div>
         </div>
       )}
+      </div>
     </div>
+
+      {/* ── Optimizasyon Günlüğü Kaydet Drawer ── */}
+      {gunlugeKaydetAcik && aiAnaliz && (() => {
+        const tumAksiyonlar = aksiyonlariCikar(aiAnaliz)
+        const toplamHarcama = reklamSetleri.reduce((a, s) => a + parseFloat(s.insights?.data[0]?.spend || '0'), 0)
+        const toplamGelir   = reklamSetleri.reduce((a, s) => a + getGelir(s.insights?.data[0]), 0)
+        const toplamDon     = reklamSetleri.reduce((a, s) => a + getDonusum(s.insights?.data[0]), 0)
+        const roas          = toplamHarcama > 0 ? toplamGelir / toplamHarcama : 0
+
+      return (
+        <GunlukKaydetDrawer
+          tumAksiyonlar={tumAksiyonlar}
+          hesap={hesap}
+          hesapAdi={hesapAdi}
+          donemAdi={donemAdi}
+          kampanyaAdi={kampanyaAdi}
+          kampanyaId={id}
+          metriks={{ harcama: toplamHarcama, gelir: toplamGelir, roas, donusum: toplamDon }}
+          seciliBaslangic={seciliAksiyonlar}
+          onKapat={() => setGunlugeKaydetAcik(false)}
+          onKaydet={() => { setGunlugeKaydetAcik(false); setGunlukKaydedildi(true) }}
+        />
+      )
+    })()}
+    </>
   )
 }

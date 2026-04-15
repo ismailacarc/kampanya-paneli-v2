@@ -42,8 +42,8 @@ export default function AiRapor({ analiz, hesapAdi, donemAdi, onKapat, seciliAks
           )}
         </div>
         {kontrollu && (
-          <span style={{ fontSize: '0.72rem', color: '#7C3AED' }}>
-            {seciliAksiyonlar!.size} aksiyon seçili
+          <span style={{ fontSize: '0.72rem', color: seciliAksiyonlar!.size > 0 ? '#7C3AED' : '#9CA3AF' }}>
+            {seciliAksiyonlar!.size > 0 ? `${seciliAksiyonlar!.size} aksiyon seçili` : 'Günlüğe eklemek istediklerini işaretle'}
           </span>
         )}
         {onKapat && (
@@ -52,7 +52,11 @@ export default function AiRapor({ analiz, hesapAdi, donemAdi, onKapat, seciliAks
       </div>
 
       <div style={{ padding: '20px 24px' }}>
-        {'hata' in analiz ? (
+        {(typeof analiz !== 'object' || analiz === null) ? (
+          <div style={{ color: '#DC2626', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', padding: '12px 16px' }}>
+            ❌ AI yanıtı işlenemedi. Lütfen tekrar deneyin.
+          </div>
+        ) : 'hata' in analiz ? (
           <div style={{ color: '#DC2626', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', padding: '12px 16px' }}>
             ❌ {String(analiz.hata)}
           </div>

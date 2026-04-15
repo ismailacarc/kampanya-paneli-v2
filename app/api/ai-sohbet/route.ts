@@ -5,7 +5,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function POST(request: Request) {
   try {
-    const { analiz, soru, hesapAdi } = await request.json()
+    const { analiz, soru, hesapAdi, model } = await request.json()
 
     if (!soru?.trim()) {
       return NextResponse.json({ error: 'Soru boş olamaz' }, { status: 400 })
@@ -30,8 +30,9 @@ Kullanıcının sorusu: "${soru}"
 
 Soruyu Türkçe, kısa ve net şekilde yanıtla. Dijital pazarlama alanında değil gibi bilgi sahibi olduğunu varsay ama teknik terimleri sade dille açıkla. Maksimum 3-4 cümle. Gerekirse somut örnek ver.`
 
+    const modelId = model || 'claude-sonnet-4-6'
     const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: modelId,
       max_tokens: 500,
       messages: [{ role: 'user', content: prompt }]
     })

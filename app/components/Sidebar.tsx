@@ -7,6 +7,7 @@ import { C } from '../lib/theme'
 
 const NAV = [
   { href: '/', icon: '🏠', ad: 'Ana Dashboard', aktif: true },
+  { href: '/sabah-brifing', icon: '☀️', ad: 'Sabah Brifing', aktif: true },
   { tip: 'divider', label: 'Reklam Platformları' },
   { href: '/meta', icon: '📘', ad: 'Meta Ads', aktif: true },
   { href: '/google-ads', icon: '🟡', ad: 'Google Ads', aktif: true },
@@ -16,9 +17,8 @@ const NAV = [
   { href: '/trendyol', icon: '🟠', ad: 'Trendyol', aktif: false },
   { href: '/ticimax-seo', icon: '🛒', ad: 'Ticimax SEO', aktif: true },
   { tip: 'divider', label: 'Araçlar' },
-  { href: '/ai-analiz', icon: '🤖', ad: 'AI Merkezi', aktif: true },
+  { href: '/analiz-merkezi', icon: '⚡', ad: 'Analiz Merkezi', aktif: true },
   { href: '/kampanya-planlama', icon: '🗓️', ad: 'Kampanya Planlama', aktif: true },
-  { href: '/optimizasyon', icon: '⚡', ad: 'Optimizasyon', aktif: true },
   { href: '/kreatif-performans', icon: '🎨', ad: 'Kreatif Performans', aktif: true },
   { tip: 'divider', label: 'Sistem' },
   { href: '/admin', icon: '⚙️', ad: 'Admin Paneli', aktif: true },

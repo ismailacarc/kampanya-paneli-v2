@@ -5,6 +5,8 @@ export interface OptimizasyonKaydi {
   tarih: string               // ISO — "2025-01-01T10:30:00"
   hesap: string               // 'karmen' | 'cotto'
   donemAdi: string            // "Son 30 Gün"
+  donemId?: string            // "7" | "14" | "30" | "bu_ay" | "90"
+  platform?: 'meta' | 'google'
   kaynak: 'ai-merkezi' | 'kampanya-detay'
 
   kampanyaIds: string[]

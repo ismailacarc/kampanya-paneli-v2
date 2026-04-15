@@ -5,7 +5,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function POST(request: Request) {
   try {
-    const { onceki, sonraki, yapilanlar, kampanyaAdlari, hesap } = await request.json()
+    const { onceki, sonraki, yapilanlar, kampanyaAdlari, hesap, model } = await request.json()
 
     const prompt = `Sen deneyimli bir Meta Ads performans danışmanısın. Aşağıdaki optimizasyon öncesi ve sonrası verileri karşılaştır ve Türkçe kısa bir değerlendirme yaz.
 
@@ -39,8 +39,9 @@ Aşağıdaki JSON formatında yanıt ver (başka hiçbir şey yazma, sadece JSON
   "oneri": "Bundan sonra ne yapılmalı? 1-2 cümle."
 }`
 
+    const modelId = model || 'claude-sonnet-4-6'
     const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: modelId,
       max_tokens: 800,
       messages: [{ role: 'user', content: prompt }]
     })

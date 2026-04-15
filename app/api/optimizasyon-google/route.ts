@@ -70,7 +70,7 @@ ${kampanyaOzeti}
 - En az 5, maksimum 10 öneri üret. Öncelik sırasına göre sırala.
 - Türkiye e-ticaret ortalamaları: İyi ROAS = 3x+, Orta = 2-3x, Kötü = 2x altı`
 
-    const modelId = model || 'claude-haiku-4-5-20251001'
+    const modelId = model || 'claude-sonnet-4-6'
 
     const message = await client.messages.create({
       model: modelId,
